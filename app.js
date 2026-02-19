@@ -1,5 +1,5 @@
 (() => {
-  const BASE_TIME = "17:00";
+  const BASE_TIME = "17:00"; // <-- CAMBIO 1
   const STORAGE_KEY = "overtime_v1_entries"; // { "YYYY-MM-DD": "HH:MM" }
 
   const els = {
@@ -10,8 +10,8 @@
     btnToday: document.getElementById("btnToday"),
     btnResetWeek: document.getElementById("btnResetWeek"),
 
-    rangeStartDate: document.getElementById("rangeStartDate"),
-    rangeEndDate: document.getElementById("rangeEndDate"),
+    rangeStart: document.getElementById("rangeStart"),
+    rangeEnd: document.getElementById("rangeEnd"),
     btnCalcRange: document.getElementById("btnCalcRange"),
     rangeTotal: document.getElementById("rangeTotal"),
     rangeDetail: document.getElementById("rangeDetail"),
@@ -22,6 +22,8 @@
   };
 
   const dayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  let rangeMode = "date"; // "date" o "week-select"
+  let dateRangeInputs = null;
 
   function loadEntries() {
     try {
@@ -52,10 +54,11 @@
   }
 
   function minutesToHM(mins) {
+    const sign = mins < 0 ? "-" : "";
     const a = Math.abs(mins);
     const h = Math.floor(a / 60);
     const m = a % 60;
-    return `${h}h ${pad2(m)}m`;
+    return `${sign}${h}h ${pad2(m)}m`;
   }
 
   function startOfWeekMonday(date) {
@@ -85,41 +88,81 @@
     const base = parseTimeToMinutes(BASE_TIME);
     const out = parseTimeToMinutes(exitTimeHHMM);
     if (out == null) return null;
-    return Math.max(0, out - base);
+
+    const diff = out - base;
+    return Math.max(0, diff); // no negativo
   }
 
-  function computeRangeTotal(entries, startISO, endISO) {
-    if (!startISO || !endISO) return { total: null, detail: "Selecciona ambas fechas." };
+  // --- NUEVO: Rango por fecha libre (inputs tipo date) ---
+  function ensureDateRangeInputs() {
+    if (dateRangeInputs) return dateRangeInputs;
 
-    const [sISO, eISO] = (startISO <= endISO) ? [startISO, endISO] : [endISO, startISO];
+    // Creamos inputs "date" y los insertamos junto a los selects existentes
+    const row = els.btnCalcRange.closest(".rangeRow");
+    if (!row) return null;
 
-    let total = 0;
-    let counted = 0;
-    let missing = 0;
+    // Ocultamos selects (manteniendo compatibilidad con tu HTML actual)
+    els.rangeStart.style.display = "none";
+    els.rangeEnd.style.display = "none";
 
-    const start = new Date(sISO + "T00:00:00");
-    const end = new Date(eISO + "T00:00:00");
+    const wrapStart = els.rangeStart.closest(".field");
+    const wrapEnd = els.rangeEnd.closest(".field");
 
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const iso = toISODate(d);
-      const v = entries[iso];
-      if (!v) { missing++; continue; }
-      const mins = computeOvertimeMinutes(v);
-      if (mins == null) { missing++; continue; }
-      total += mins;
-      counted++;
-    }
+    const startDate = document.createElement("input");
+    startDate.type = "date";
+    startDate.className = "timeInput"; // reutiliza estilo
+    startDate.style.padding = "10px 10px";
+    startDate.style.borderRadius = "12px";
 
-    return {
-      total,
-      detail: `Días con hora: ${counted} • Sin dato: ${missing} • Base ${BASE_TIME}`
-    };
+    const endDate = document.createElement("input");
+    endDate.type = "date";
+    endDate.className = "timeInput";
+    endDate.style.padding = "10px 10px";
+    endDate.style.borderRadius = "12px";
+
+    // Etiquetas
+    const startLabel = wrapStart?.querySelector("span");
+    const endLabel = wrapEnd?.querySelector("span");
+    if (startLabel) startLabel.textContent = "Desde (fecha)";
+    if (endLabel) endLabel.textContent = "Hasta (fecha)";
+
+    // Insertar debajo del span
+    wrapStart?.appendChild(startDate);
+    wrapEnd?.appendChild(endDate);
+
+    // Defaults: lunes de semana actual → hoy
+    const monday = startOfWeekMonday(new Date());
+    startDate.value = toISODate(monday);
+    endDate.value = toISODate(new Date());
+
+    dateRangeInputs = { startDate, endDate };
+    return dateRangeInputs;
   }
 
   function buildWeek(monday, entries) {
     els.weekLabel.textContent = weekRangeLabel(monday);
-    els.daysGrid.innerHTML = "";
 
+    // Mantengo los selects rellenados por si quieres volver a usarlos, pero quedarán ocultos
+    els.rangeStart.innerHTML = "";
+    els.rangeEnd.innerHTML = "";
+
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(monday, i);
+      const iso = toISODate(d);
+
+      const opt1 = document.createElement("option");
+      opt1.value = iso;
+      opt1.textContent = `${dayNames[i]} ${formatShortDate(d)}`;
+      els.rangeStart.appendChild(opt1);
+
+      const opt2 = document.createElement("option");
+      opt2.value = iso;
+      opt2.textContent = `${dayNames[i]} ${formatShortDate(d)}`;
+      els.rangeEnd.appendChild(opt2);
+    }
+
+    // Construcción tarjetas días
+    els.daysGrid.innerHTML = "";
     const todayISO = toISODate(new Date());
 
     for (let i = 0; i < 7; i++) {
@@ -147,32 +190,11 @@
       const row = document.createElement("div");
       row.className = "inputRow";
 
-      // Input time con picker nativo tipo alarma en iPhone
       const input = document.createElement("input");
       input.className = "timeInput";
       input.type = "time";
-      input.inputMode = "none";
       input.value = stored;
-      input.setAttribute("step", "60");
-      input.setAttribute("autocomplete", "off");
       input.setAttribute("aria-label", `Hora de salida ${dayNames[i]} ${formatShortDate(d)}`);
-
-      const openPicker = () => {
-        if (typeof input.showPicker === "function") input.showPicker();
-        else {
-          input.focus({ preventScroll: true });
-          input.click();
-        }
-      };
-
-      input.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        openPicker();
-      });
-
-      input.addEventListener("focus", () => {
-        try { openPicker(); } catch {}
-      });
 
       const pill = document.createElement("div");
       pill.className = "pill";
@@ -209,38 +231,64 @@
       els.daysGrid.appendChild(card);
     }
 
-    // limpia resultado de acumulado en cada render
+    // Asegurar inputs de rango por fecha
+    ensureDateRangeInputs();
+
     els.rangeTotal.textContent = "—";
     els.rangeDetail.textContent = "—";
   }
 
-  // ---------- INIT ----------
+  function computeRangeTotal(entries, startISO, endISO) {
+    if (!startISO || !endISO) return { total: null, detail: "Selecciona un rango." };
+
+    const a = (startISO <= endISO) ? [startISO, endISO] : [endISO, startISO];
+
+    let total = 0;
+    let counted = 0;
+    let missing = 0;
+
+    const start = new Date(a[0] + "T00:00:00");
+    const end = new Date(a[1] + "T00:00:00");
+
+    // Safety: si el usuario pone un rango enorme accidentalmente, igual funciona,
+    // pero aquí podrías poner un límite. Lo dejo sin límite.
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const iso = toISODate(d);
+      const v = entries[iso];
+      if (!v) { missing++; continue; }
+      const mins = computeOvertimeMinutes(v);
+      if (mins == null) { missing++; continue; }
+      total += mins;
+      counted++;
+    }
+
+    const detail = `Días con hora: ${counted} • Sin dato: ${missing} • Base ${BASE_TIME}`;
+    return { total, detail };
+  }
+
+  // --- Init ---
   let entries = loadEntries();
   let currentMonday = startOfWeekMonday(new Date());
-
-  // defaults de fechas acumulado: lunes semana actual → hoy
-  els.rangeStartDate.value = toISODate(currentMonday);
-  els.rangeEndDate.value = toISODate(new Date());
 
   function render() {
     buildWeek(currentMonday, entries);
   }
 
+  // Week nav
   els.prevWeek.addEventListener("click", () => {
     currentMonday = addDays(currentMonday, -7);
     render();
   });
-
   els.nextWeek.addEventListener("click", () => {
     currentMonday = addDays(currentMonday, +7);
     render();
   });
-
   els.btnToday.addEventListener("click", () => {
     currentMonday = startOfWeekMonday(new Date());
     render();
   });
 
+  // Clear week only
   els.btnResetWeek.addEventListener("click", () => {
     const ok = confirm("¿Seguro? Esto borra SOLO los datos de la semana visible.");
     if (!ok) return;
@@ -253,9 +301,11 @@
     render();
   });
 
+  // Range calc (AHORA con fechas libres)
   els.btnCalcRange.addEventListener("click", () => {
-    const startISO = els.rangeStartDate.value;
-    const endISO = els.rangeEndDate.value;
+    const dr = ensureDateRangeInputs();
+    const startISO = dr?.startDate?.value;
+    const endISO = dr?.endDate?.value;
 
     const { total, detail } = computeRangeTotal(entries, startISO, endISO);
 
@@ -285,7 +335,7 @@
         await navigator.share({ files: [file], title: "Respaldo horas extra" });
         return;
       }
-    } catch {}
+    } catch { /* ignore */ }
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
