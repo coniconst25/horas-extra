@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Horas Extra</title>
+
+  <!-- iOS nice-to-have -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#f7d9df">
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="dot" aria-hidden="true"></div>
+      <div>
+        <h1>Horas extra</h1>
+        <p class="sub">Semana actual (Lun–Dom) • Base: <strong>16:30</strong></p>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btnToday" class="btn ghost" type="button">Hoy</button>
+      <button id="btnResetWeek" class="btn ghost" type="button" title="Limpia solo esta semana">Limpiar semana</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="cardHead">
+        <h2>Semana</h2>
+        <div class="weekNav">
+          <button id="prevWeek" class="btn ghost" type="button" aria-label="Semana anterior">←</button>
+          <div id="weekLabel" class="weekLabel">—</div>
+          <button id="nextWeek" class="btn ghost" type="button" aria-label="Semana siguiente">→</button>
+        </div>
+      </div>
+
+      <div id="daysGrid" class="daysGrid" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+      <div class="cardHead">
+        <h2>Acumulado</h2>
+        <p class="muted">Elige un rango dentro de la semana visible (incluye ambos días).</p>
+      </div>
+
+      <div class="rangeRow">
+        <label class="field">
+          <span>Desde</span>
+          <select id="rangeStart"></select>
+        </label>
+
+        <label class="field">
+          <span>Hasta</span>
+          <select id="rangeEnd"></select>
+        </label>
+
+        <button id="btnCalcRange" class="btn primary" type="button">Calcular</button>
+      </div>
+
+      <div class="resultBox">
+        <div class="resultLine">
+          <span>Total horas extra:</span>
+          <strong id="rangeTotal">—</strong>
+        </div>
+        <div class="resultLine small">
+          <span>Detalle:</span>
+          <span id="rangeDetail" class="muted">—</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="cardHead">
+        <h2>Respaldo</h2>
+        <p class="muted">
+          Tus datos se guardan en tu dispositivo. Usa respaldo por si cambias de iPhone o borras Safari.
+        </p>
+      </div>
+
+      <div class="backupRow">
+        <button id="btnExport" class="btn" type="button">Exportar JSON</button>
+
+        <label class="btn ghost fileBtn" for="importFile">
+          Importar JSON
+          <input id="importFile" type="file" accept="application/json" />
+        </label>
+
+        <button id="btnWipeAll" class="btn danger ghost" type="button" title="Borra TODO (todas las semanas)">Borrar todo</button>
+      </div>
+
+      <p class="tiny muted">
+        Tip iPhone: guarda el JSON en Archivos/iCloud/Drive. Si reinstalas o limpias Safari, lo importas.
+      </p>
+    </section>
+
+    <footer class="footer">
+      <p class="tiny muted">
+        Hecho para GitHub Pages • Guardado local (sin servidor)
+      </p>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
