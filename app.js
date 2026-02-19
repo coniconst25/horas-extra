@@ -1,5 +1,5 @@
 (() => {
-  const BASE_TIME = "16:30";
+  const BASE_TIME = "17:00"; // <-- CAMBIO 1
   const STORAGE_KEY = "overtime_v1_entries"; // { "YYYY-MM-DD": "HH:MM" }
 
   const els = {
@@ -22,6 +22,8 @@
   };
 
   const dayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  let rangeMode = "date"; // "date" o "week-select"
+  let dateRangeInputs = null;
 
   function loadEntries() {
     try {
@@ -39,12 +41,10 @@
   function pad2(n) { return String(n).padStart(2, "0"); }
 
   function toISODate(d) {
-    // local date -> YYYY-MM-DD
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
 
   function parseTimeToMinutes(hhmm) {
-    // expects "HH:MM"
     const m = /^(\d{2}):(\d{2})$/.exec(hhmm || "");
     if (!m) return null;
     const hh = Number(m[1]);
@@ -62,10 +62,9 @@
   }
 
   function startOfWeekMonday(date) {
-    // Make a copy at local midnight
     const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const jsDay = d.getDay(); // 0 Sun..6 Sat
-    const diff = (jsDay === 0) ? -6 : (1 - jsDay); // move to Monday
+    const diff = (jsDay === 0) ? -6 : (1 - jsDay);
     d.setDate(d.getDate() + diff);
     return d;
   }
@@ -91,22 +90,64 @@
     if (out == null) return null;
 
     const diff = out - base;
-    // Si quieres permitir “negativo” (saliste antes), deja diff tal cual.
-    // Si prefieres que horas extra nunca sea negativo, usa: Math.max(0, diff)
-    return Math.max(0, diff);
+    return Math.max(0, diff); // no negativo
+  }
+
+  // --- NUEVO: Rango por fecha libre (inputs tipo date) ---
+  function ensureDateRangeInputs() {
+    if (dateRangeInputs) return dateRangeInputs;
+
+    // Creamos inputs "date" y los insertamos junto a los selects existentes
+    const row = els.btnCalcRange.closest(".rangeRow");
+    if (!row) return null;
+
+    // Ocultamos selects (manteniendo compatibilidad con tu HTML actual)
+    els.rangeStart.style.display = "none";
+    els.rangeEnd.style.display = "none";
+
+    const wrapStart = els.rangeStart.closest(".field");
+    const wrapEnd = els.rangeEnd.closest(".field");
+
+    const startDate = document.createElement("input");
+    startDate.type = "date";
+    startDate.className = "timeInput"; // reutiliza estilo
+    startDate.style.padding = "10px 10px";
+    startDate.style.borderRadius = "12px";
+
+    const endDate = document.createElement("input");
+    endDate.type = "date";
+    endDate.className = "timeInput";
+    endDate.style.padding = "10px 10px";
+    endDate.style.borderRadius = "12px";
+
+    // Etiquetas
+    const startLabel = wrapStart?.querySelector("span");
+    const endLabel = wrapEnd?.querySelector("span");
+    if (startLabel) startLabel.textContent = "Desde (fecha)";
+    if (endLabel) endLabel.textContent = "Hasta (fecha)";
+
+    // Insertar debajo del span
+    wrapStart?.appendChild(startDate);
+    wrapEnd?.appendChild(endDate);
+
+    // Defaults: lunes de semana actual → hoy
+    const monday = startOfWeekMonday(new Date());
+    startDate.value = toISODate(monday);
+    endDate.value = toISODate(new Date());
+
+    dateRangeInputs = { startDate, endDate };
+    return dateRangeInputs;
   }
 
   function buildWeek(monday, entries) {
     els.weekLabel.textContent = weekRangeLabel(monday);
 
-    // Fill selects
+    // Mantengo los selects rellenados por si quieres volver a usarlos, pero quedarán ocultos
     els.rangeStart.innerHTML = "";
     els.rangeEnd.innerHTML = "";
-    const dates = [];
 
     for (let i = 0; i < 7; i++) {
       const d = addDays(monday, i);
-      dates.push(d);
       const iso = toISODate(d);
 
       const opt1 = document.createElement("option");
@@ -120,20 +161,10 @@
       els.rangeEnd.appendChild(opt2);
     }
 
-    // Default range: Mon..Today (if within week), else Mon..Sun
-    const todayISO = toISODate(new Date());
-    const weekStartISO = toISODate(monday);
-    const weekEndISO = toISODate(addDays(monday, 6));
-
-    els.rangeStart.value = weekStartISO;
-    if (todayISO >= weekStartISO && todayISO <= weekEndISO) {
-      els.rangeEnd.value = todayISO;
-    } else {
-      els.rangeEnd.value = weekEndISO;
-    }
-
-    // Build day cards
+    // Construcción tarjetas días
     els.daysGrid.innerHTML = "";
+    const todayISO = toISODate(new Date());
+
     for (let i = 0; i < 7; i++) {
       const d = addDays(monday, i);
       const iso = toISODate(d);
@@ -192,7 +223,6 @@
       card.appendChild(row);
       card.appendChild(pill);
 
-      // highlight today
       if (iso === todayISO) {
         card.style.borderColor = "rgba(231,127,154,0.55)";
         card.style.boxShadow = "0 14px 32px rgba(231,127,154,0.18)";
@@ -201,23 +231,27 @@
       els.daysGrid.appendChild(card);
     }
 
-    // Clear range result
+    // Asegurar inputs de rango por fecha
+    ensureDateRangeInputs();
+
     els.rangeTotal.textContent = "—";
     els.rangeDetail.textContent = "—";
   }
 
   function computeRangeTotal(entries, startISO, endISO) {
     if (!startISO || !endISO) return { total: null, detail: "Selecciona un rango." };
+
     const a = (startISO <= endISO) ? [startISO, endISO] : [endISO, startISO];
 
     let total = 0;
     let counted = 0;
     let missing = 0;
 
-    // iterate date inclusive
     const start = new Date(a[0] + "T00:00:00");
     const end = new Date(a[1] + "T00:00:00");
 
+    // Safety: si el usuario pone un rango enorme accidentalmente, igual funciona,
+    // pero aquí podrías poner un límite. Lo dejo sin límite.
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const iso = toISODate(d);
       const v = entries[iso];
@@ -228,7 +262,7 @@
       counted++;
     }
 
-    const detail = `Días con hora: ${counted} • Sin dato: ${missing} • (Base 16:30)`;
+    const detail = `Días con hora: ${counted} • Sin dato: ${missing} • Base ${BASE_TIME}`;
     return { total, detail };
   }
 
@@ -267,10 +301,12 @@
     render();
   });
 
-  // Range calc
+  // Range calc (AHORA con fechas libres)
   els.btnCalcRange.addEventListener("click", () => {
-    const startISO = els.rangeStart.value;
-    const endISO = els.rangeEnd.value;
+    const dr = ensureDateRangeInputs();
+    const startISO = dr?.startDate?.value;
+    const endISO = dr?.endDate?.value;
+
     const { total, detail } = computeRangeTotal(entries, startISO, endISO);
 
     if (total == null) {
@@ -292,8 +328,6 @@
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const filename = `horas-extra-backup_${toISODate(new Date())}.json`;
-
-    // Try Web Share (best on iPhone), fallback to download
     const file = new File([blob], filename, { type: "application/json" });
 
     try {
@@ -327,12 +361,11 @@
         return;
       }
 
-      // Merge (mantiene lo que ya tienes; sobreescribe fechas que vengan en el JSON)
       entries = { ...entries, ...data.entries };
       saveEntries(entries);
       render();
       alert("Importación OK ✅");
-    } catch (e) {
+    } catch {
       alert("No pude importar el JSON. Revisa que sea un archivo válido.");
     } finally {
       ev.target.value = "";
