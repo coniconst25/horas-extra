@@ -10,8 +10,8 @@
     btnToday: document.getElementById("btnToday"),
     btnResetWeek: document.getElementById("btnResetWeek"),
 
-    rangeStart: document.getElementById("rangeStart"),
-    rangeEnd: document.getElementById("rangeEnd"),
+    rangeStartDate: document.getElementById("rangeStartDate"),
+    rangeEndDate: document.getElementById("rangeEndDate"),
     btnCalcRange: document.getElementById("btnCalcRange"),
     rangeTotal: document.getElementById("rangeTotal"),
     rangeDetail: document.getElementById("rangeDetail"),
@@ -22,7 +22,6 @@
   };
 
   const dayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-  let dateRangeInputs = null;
 
   function loadEntries() {
     try {
@@ -53,11 +52,10 @@
   }
 
   function minutesToHM(mins) {
-    const sign = mins < 0 ? "-" : "";
     const a = Math.abs(mins);
     const h = Math.floor(a / 60);
     const m = a % 60;
-    return `${sign}${h}h ${pad2(m)}m`;
+    return `${h}h ${pad2(m)}m`;
   }
 
   function startOfWeekMonday(date) {
@@ -87,56 +85,11 @@
     const base = parseTimeToMinutes(BASE_TIME);
     const out = parseTimeToMinutes(exitTimeHHMM);
     if (out == null) return null;
-
-    const diff = out - base;
-    return Math.max(0, diff); // horas extra nunca negativas
-  }
-
-  // ---------- RANGO POR FECHA (cualquier día calendario) ----------
-  function ensureDateRangeInputs() {
-    if (dateRangeInputs) return dateRangeInputs;
-
-    const row = els.btnCalcRange.closest(".rangeRow");
-    if (!row) return null;
-
-    // ocultamos los selects originales (manteniendo tu HTML)
-    els.rangeStart.style.display = "none";
-    els.rangeEnd.style.display = "none";
-
-    const wrapStart = els.rangeStart.closest(".field");
-    const wrapEnd = els.rangeEnd.closest(".field");
-
-    const startDate = document.createElement("input");
-    startDate.type = "date";
-    startDate.className = "timeInput";
-    startDate.style.padding = "10px 10px";
-    startDate.style.borderRadius = "12px";
-
-    const endDate = document.createElement("input");
-    endDate.type = "date";
-    endDate.className = "timeInput";
-    endDate.style.padding = "10px 10px";
-    endDate.style.borderRadius = "12px";
-
-    const startLabel = wrapStart?.querySelector("span");
-    const endLabel = wrapEnd?.querySelector("span");
-    if (startLabel) startLabel.textContent = "Desde (fecha)";
-    if (endLabel) endLabel.textContent = "Hasta (fecha)";
-
-    wrapStart?.appendChild(startDate);
-    wrapEnd?.appendChild(endDate);
-
-    // defaults: lunes de esta semana → hoy
-    const monday = startOfWeekMonday(new Date());
-    startDate.value = toISODate(monday);
-    endDate.value = toISODate(new Date());
-
-    dateRangeInputs = { startDate, endDate };
-    return dateRangeInputs;
+    return Math.max(0, out - base);
   }
 
   function computeRangeTotal(entries, startISO, endISO) {
-    if (!startISO || !endISO) return { total: null, detail: "Selecciona un rango." };
+    if (!startISO || !endISO) return { total: null, detail: "Selecciona ambas fechas." };
 
     const [sISO, eISO] = (startISO <= endISO) ? [startISO, endISO] : [endISO, startISO];
 
@@ -150,42 +103,23 @@
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const iso = toISODate(d);
       const v = entries[iso];
-
       if (!v) { missing++; continue; }
       const mins = computeOvertimeMinutes(v);
       if (mins == null) { missing++; continue; }
-
       total += mins;
       counted++;
     }
 
-    const detail = `Días con hora: ${counted} • Sin dato: ${missing} • Base ${BASE_TIME}`;
-    return { total, detail };
+    return {
+      total,
+      detail: `Días con hora: ${counted} • Sin dato: ${missing} • Base ${BASE_TIME}`
+    };
   }
 
-  // ---------- SEMANA (Lun–Dom) ----------
   function buildWeek(monday, entries) {
     els.weekLabel.textContent = weekRangeLabel(monday);
-
-    // relleno selects (aunque queden ocultos)
-    els.rangeStart.innerHTML = "";
-    els.rangeEnd.innerHTML = "";
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(monday, i);
-      const iso = toISODate(d);
-
-      const opt1 = document.createElement("option");
-      opt1.value = iso;
-      opt1.textContent = `${dayNames[i]} ${formatShortDate(d)}`;
-      els.rangeStart.appendChild(opt1);
-
-      const opt2 = document.createElement("option");
-      opt2.value = iso;
-      opt2.textContent = `${dayNames[i]} ${formatShortDate(d)}`;
-      els.rangeEnd.appendChild(opt2);
-    }
-
     els.daysGrid.innerHTML = "";
+
     const todayISO = toISODate(new Date());
 
     for (let i = 0; i < 7; i++) {
@@ -213,35 +147,30 @@
       const row = document.createElement("div");
       row.className = "inputRow";
 
-      // ---- INPUT TIME con picker tipo alarma (iPhone) ----
+      // Input time con picker nativo tipo alarma en iPhone
       const input = document.createElement("input");
       input.className = "timeInput";
       input.type = "time";
-      input.inputMode = "none";         // reduce teclado
+      input.inputMode = "none";
       input.value = stored;
-      input.setAttribute("step", "60"); // 1 minuto; usa 300 para 5 min
+      input.setAttribute("step", "60");
       input.setAttribute("autocomplete", "off");
       input.setAttribute("aria-label", `Hora de salida ${dayNames[i]} ${formatShortDate(d)}`);
 
       const openPicker = () => {
-        // showPicker existe en navegadores modernos; si no, fallback
-        if (typeof input.showPicker === "function") {
-          input.showPicker();
-        } else {
+        if (typeof input.showPicker === "function") input.showPicker();
+        else {
           input.focus({ preventScroll: true });
           input.click();
         }
       };
 
-      // Al tocar: abre el selector nativo
       input.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         openPicker();
       });
 
-      // Si llega foco por otra vía, también
       input.addEventListener("focus", () => {
-        // Algunos iOS no dejan showPicker sin gesto; focus ayuda
         try { openPicker(); } catch {}
       });
 
@@ -280,7 +209,7 @@
       els.daysGrid.appendChild(card);
     }
 
-    ensureDateRangeInputs();
+    // limpia resultado de acumulado en cada render
     els.rangeTotal.textContent = "—";
     els.rangeDetail.textContent = "—";
   }
@@ -289,25 +218,29 @@
   let entries = loadEntries();
   let currentMonday = startOfWeekMonday(new Date());
 
+  // defaults de fechas acumulado: lunes semana actual → hoy
+  els.rangeStartDate.value = toISODate(currentMonday);
+  els.rangeEndDate.value = toISODate(new Date());
+
   function render() {
     buildWeek(currentMonday, entries);
   }
 
-  // Navegación semana
   els.prevWeek.addEventListener("click", () => {
     currentMonday = addDays(currentMonday, -7);
     render();
   });
+
   els.nextWeek.addEventListener("click", () => {
     currentMonday = addDays(currentMonday, +7);
     render();
   });
+
   els.btnToday.addEventListener("click", () => {
     currentMonday = startOfWeekMonday(new Date());
     render();
   });
 
-  // Limpiar solo semana visible
   els.btnResetWeek.addEventListener("click", () => {
     const ok = confirm("¿Seguro? Esto borra SOLO los datos de la semana visible.");
     if (!ok) return;
@@ -320,11 +253,9 @@
     render();
   });
 
-  // Calcular acumulado por fechas libres
   els.btnCalcRange.addEventListener("click", () => {
-    const dr = ensureDateRangeInputs();
-    const startISO = dr?.startDate?.value;
-    const endISO = dr?.endDate?.value;
+    const startISO = els.rangeStartDate.value;
+    const endISO = els.rangeEndDate.value;
 
     const { total, detail } = computeRangeTotal(entries, startISO, endISO);
 
@@ -354,7 +285,7 @@
         await navigator.share({ files: [file], title: "Respaldo horas extra" });
         return;
       }
-    } catch { /* ignore */ }
+    } catch {}
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -380,7 +311,7 @@
         return;
       }
 
-      entries = { ...entries, ...data.entries }; // merge
+      entries = { ...entries, ...data.entries };
       saveEntries(entries);
       render();
       alert("Importación OK ✅");
