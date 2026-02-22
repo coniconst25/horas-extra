@@ -148,6 +148,7 @@
     els.daysGrid.innerHTML = "";
 
     const todayISO = toISODate(new Date());
+    const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
 
     for(let i=0;i<7;i++){
       const d = addDays(monday,i);
@@ -174,6 +175,7 @@
       const row = document.createElement("div");
       row.className = "inputRow";
 
+      // Input time con picker nativo
       const input = document.createElement("input");
       input.className = "timeInput";
       input.type = "time";
@@ -181,22 +183,29 @@
       input.value = stored;
       input.setAttribute("step", "60");
       input.setAttribute("autocomplete", "off");
+      input.setAttribute("aria-label", `Hora de salida ${dayNames[i]} ${formatShortDate(d)}`);
 
-      // abrir picker nativo (Android normalmente ok con focus)
+      // ---- FIX iOS: abrir con TAP normal (click), sin preventDefault ----
       const openPicker = () => {
-        if (typeof input.showPicker === "function") input.showPicker();
-        else {
+        if (typeof input.showPicker === "function") {
+          input.showPicker();
+        } else {
+          // Fallback: focus suele abrir el picker en iOS/Android
           input.focus({ preventScroll: true });
-          input.click();
         }
       };
 
-      input.addEventListener("pointerdown", (e) => {
-        // En Android a veces preventDefault bloquea el click. Solo prevenimos en iOS.
-        const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        if (isiOS) e.preventDefault();
+      // Tap normal
+      input.addEventListener("click", () => {
         openPicker();
       });
+
+      // Fallback adicional para iOS (por si algún click no dispara como esperas)
+      if (isiOS) {
+        input.addEventListener("touchend", () => {
+          openPicker();
+        }, { passive: true });
+      }
 
       const pill = document.createElement("div");
       pill.className = "pill";
@@ -247,6 +256,7 @@
   els.nextWeek?.addEventListener("click", () => { currentMonday = addDays(currentMonday, +7); render(); });
   els.btnToday?.addEventListener("click", () => { currentMonday = startOfWeekMonday(new Date()); render(); });
 
+  // Si eliminaste "Limpiar semana" del HTML, esto no rompe (?.)
   els.btnResetWeek?.addEventListener("click", () => {
     const ok = confirm("¿Seguro? Esto borra SOLO los datos de la semana visible.");
     if (!ok) return;
