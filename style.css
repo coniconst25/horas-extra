@@ -300,3 +300,14 @@ select:focus{
   .actions{ display:none; } /* para que quede más limpio en pantallas muy chicas */
 }
 
+.weekBaseBox{
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.58);
+}
+
+.weekBaseField{
+  max-width: 280px;
+}
